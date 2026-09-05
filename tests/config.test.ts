@@ -30,3 +30,39 @@ it("resolves the real Varlock schema into explicit values without changing proce
     "synthetic-test-key",
   );
 });
+it("resolves dependencies of selected CLI keys", async () => {
+  const dir = await mkdtemp(join(process.cwd(), ".shownotes-config-"));
+  dirs.push(dir);
+  const schema =
+    (await readFile(".env.schema", "utf8")).replace("WHISPER_MODEL=", "WHISPER_MODEL=$MODEL_PATH") +
+    "\nMODEL_PATH=/synthetic/model\n";
+  await writeFile(join(dir, ".env.schema"), schema);
+  const config = await resolveCLIConfig(dir, { ANTHROPIC_API_KEY: "synthetic-key" });
+  expect(config.env.WHISPER_MODEL).toBe("/synthetic/model");
+});
+it("reports authorization timeout without exposing the underlying resolver message", async () => {
+  const { internal } = await import("varlock");
+  const dir = await mkdtemp(join(process.cwd(), ".shownotes-config-"));
+  dirs.push(dir);
+  await writeFile(join(dir, ".env.schema"), await readFile(".env.schema", "utf8"));
+  const graph = await internal.loadEnvGraph({
+    basePath: dir,
+    skipCache: true,
+    overrideValues: { ANTHROPIC_API_KEY: "synthetic" },
+    processEnvOverride: {},
+  });
+  vi.spyOn(graph, "resolveEnvValues").mockImplementation(async () => {
+    graph.configSchema.ANTHROPIC_API_KEY!.resolutionError = new internal.ResolutionError(
+      "1Password CLI error - authorization timeout PRIVATE_TEST_VALUE",
+    );
+  });
+  vi.spyOn(internal, "loadEnvGraph").mockResolvedValueOnce(graph);
+  let failure: unknown;
+  try {
+    await resolveCLIConfig(dir, {});
+  } catch (error) {
+    failure = error;
+  }
+  expect((failure as Error).message).toContain("1Password authorization timed out");
+  expect((failure as Error).message).not.toContain("PRIVATE_TEST_VALUE");
+});
