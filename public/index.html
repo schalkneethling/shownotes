@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="session-token" content="SESSION_TOKEN" />
+    <meta name="description" content="Turn a local recording into YouTube publishing copy." />
+    <title>Shownotes · Recording to ready</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/ui.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="wordmark" href="/">shownotes<span aria-hidden="true">↗</span></a
+        ><span class="local">● Local workspace</span>
+      </header>
+      <section aria-labelledby="upload-heading">
+        <p class="eyebrow">01 / YOUR RECORDING</p>
+        <h1 id="upload-heading">A good stream deserves good notes.</h1>
+        <p class="intro">
+          Add your MP4. Get five titles, two descriptions, and chapters ready for YouTube.
+        </p>
+        <form id="upload-form">
+          <div id="dropzone">
+            <span class="upload-symbol" aria-hidden="true">↑</span
+            ><label for="video">Drop one recording here, or choose a file</label
+            ><input id="video" type="file" accept=".mp4,video/mp4" required />
+            <p id="file-name">MP4 · up to MAX_UPLOAD MB</p>
+          </div>
+          <div class="actions">
+            <label class="reuse"
+              ><input id="reuse" type="checkbox" checked /> Reuse a matching transcript</label
+            ><button id="generate" type="submit">
+              Generate shownotes <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </form>
+        <p class="privacy">
+          Your video stays on this computer. Transcription runs locally; transcript text is sent to
+          Claude to generate publishing copy.
+        </p>
+        <div id="progress-panel" hidden>
+          <p id="progress" role="status" aria-live="polite"></p>
+          <progress id="progress-bar" aria-label="Processing progress"></progress>
+        </div>
+        <p id="error" role="alert"></p>
+      </section>
+      <section id="results" hidden aria-labelledby="result-heading">
+        <div class="result-heading">
+          <div>
+            <p class="eyebrow">02 / YOUR PUBLISHING COPY</p>
+            <h2 id="result-heading" tabindex="-1">Choose what sounds like you.</h2>
+          </div>
+          <span class="local">Ready to copy</span>
+        </div>
+        <p id="saved"></p>
+        <fieldset>
+          <legend>Title <span>Choose one of five</span></legend>
+          <div id="titles" class="choices"></div>
+          <button id="copy-title" type="button" disabled>Copy selected title</button>
+        </fieldset>
+        <fieldset>
+          <legend>Description <span>Choose one of two</span></legend>
+          <div id="descriptions" class="descriptions"></div>
+          <button id="copy-description" type="button" disabled>Copy selected description</button>
+          <p class="hint">Includes the chapter list, ready for YouTube’s description field.</p>
+        </fieldset>
+        <div class="extras">
+          <section>
+            <h3>Chapters</h3>
+            <pre id="chapters"></pre>
+            <button id="copy-chapters" type="button">Copy chapters</button>
+          </section>
+          <section>
+            <h3>Tags</h3>
+            <p id="tags"></p>
+            <button id="copy-tags" type="button">Copy tags</button>
+          </section>
+        </div>
+        <p id="copy-status" role="status" aria-live="polite"></p>
+      </section>
+      <footer>From the recording to the upload form.</footer>
+    </main>
+  </body>
+</html>

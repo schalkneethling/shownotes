@@ -1,0 +1,55 @@
+{
+  "name": "shownotes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turn developer livestream MP4s into local transcripts and ready-to-paste YouTube titles, descriptions, chapters, and tags with whisper.cpp and Claude.",
+  "keywords": [],
+  "homepage": "https://github.com/schalkneethling/shownotes#readme",
+  "bugs": {
+    "url": "https://github.com/schalkneethling/shownotes/issues"
+  },
+  "license": "MIT",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schalkneethling/shownotes.git"
+  },
+  "bin": {
+    "video-brief": "dist/cli.js"
+  },
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint . && stylelint \"**/*.{css,scss}\"",
+    "lint:fix": "oxlint --fix . && stylelint \"**/*.{css,scss}\" --fix",
+    "format": "oxfmt --write . '!.agents/**'",
+    "format:check": "oxfmt --check . '!.agents/**'",
+    "typecheck": "tsc --noEmit",
+    "quality": "npm run test && npm run lint && npm run format:check && npm run typecheck && npm run build",
+    "env:load": "varlock load --agent --skip-cache",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "npm run build && varlock run --skip-cache --inject vars -- node dist/serve.js",
+    "brief": "varlock run --skip-cache --inject vars -- node dist/cli.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
+    "@varlock/1password-plugin": "^2.0.4",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^26.4.1",
+    "jsdom": "^29.1.1",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
+    "stylelint": "^17.15.0",
+    "stylelint-config-standard": "^40.0.0",
+    "stylelint-plugin-use-baseline": "^1.4.6",
+    "typescript": "^7.0.2",
+    "varlock": "^1.18.0",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
