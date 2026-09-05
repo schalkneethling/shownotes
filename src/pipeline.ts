@@ -12,6 +12,7 @@ import {
   TranscriptionOutputError,
   type Segment,
 } from "./transcription.js";
+import { normalizeChapterSettings, planChapters, type ChapterSettings } from "./chapters.js";
 import { renderBrief } from "./render.js";
 import { createDiagnosticRun, finishDiagnosticRun, type DiagnosticRun } from "./diagnostics.js";
 export interface PipelineOptions {
@@ -22,12 +23,13 @@ export interface PipelineOptions {
   skipTranscribe?: boolean;
   forceTranscribe?: boolean;
   onProgress?: (stage: string) => void;
+  chapters?: Partial<ChapterSettings>;
 }
 export interface Dependencies {
   check: typeof runProcess;
   extract: typeof extractAudio;
   transcribe: typeof transcribe;
-  distill: (segments: Segment[]) => Promise<Brief>;
+  distill: (segments: Segment[], chapters: ChapterSettings) => Promise<Brief>;
 }
 export function productionDependencies(
   apiKey: string | undefined,
@@ -47,7 +49,7 @@ export function productionDependencies(
     check: run,
     extract: (input, output) => extractAudio(input, output, run),
     transcribe: (options) => transcribe(options, run),
-    distill: (segments) => distill(segments, client, claudeModel, signal),
+    distill: (segments, chapters) => distill(segments, client, claudeModel, signal, chapters),
   };
 }
 export async function hashFile(path: string): Promise<string> {
@@ -80,6 +82,7 @@ export async function pipeline(
   options: PipelineOptions,
   deps: Dependencies,
 ): Promise<{ brief: Brief; prefix: string; reused: boolean }> {
+  const chapters = normalizeChapterSettings(options.chapters);
   const input = resolve(options.input);
   const out = resolve(options.out ?? dirname(input));
   const progress = options.onProgress ?? (() => {});
@@ -161,8 +164,9 @@ export async function pipeline(
     }
   }
   await atomicWrite(`${prefix}.transcript.txt`, segments.map((s) => s.text).join("\n") + "\n");
+  planChapters(segments, chapters);
   progress(reused ? "Reusing transcript · generating candidates" : "Generating candidates");
-  const brief = await deps.distill(segments);
+  const brief = await deps.distill(segments, chapters);
   await atomicWrite(`${prefix}.brief.md`, renderBrief(brief));
   progress("Complete");
   return { brief, prefix, reused };

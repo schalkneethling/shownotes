@@ -1,6 +1,6 @@
 import type { DiagnosticInfo } from "./diagnostics.js";
 import type { Brief } from "./distillation.js";
-import { chaptersText } from "./render.js";
+import { chaptersText, descriptionText } from "./render.js";
 export function initUI(
   doc: Document,
   deps: {
@@ -26,6 +26,16 @@ export function initUI(
   const copyDescription = element<HTMLButtonElement>("copy-description");
   const fileInput = element<HTMLInputElement>("video");
   const generate = element<HTMLButtonElement>("generate");
+  const includeChapters = element<HTMLInputElement>("include-chapters");
+  const chapterCount = element<HTMLSelectElement>("chapter-count");
+  const chapterMinimum = element<HTMLInputElement>("chapter-min-seconds");
+  function updateChapterControls() {
+    includeChapters.disabled = working;
+    chapterCount.disabled = working || !includeChapters.checked;
+    chapterMinimum.disabled = working || !includeChapters.checked;
+  }
+  includeChapters.addEventListener("change", updateChapterControls);
+  updateChapterControls();
   async function copy(text: string) {
     try {
       await deps.copy(text);
@@ -39,9 +49,7 @@ export function initUI(
   });
   copyDescription.addEventListener("click", () => {
     if (current && descriptionIndex !== undefined)
-      void copy(
-        `${current.descriptions[descriptionIndex]!.join("\n\n")}\n\n${chaptersText(current)}`,
-      );
+      void copy(descriptionText(current, descriptionIndex));
   });
   element("copy-chapters").addEventListener("click", () => {
     if (current) void copy(chaptersText(current));
@@ -84,6 +92,11 @@ export function initUI(
         });
       });
     }
+    element("chapter-section").hidden = brief.chapters.length === 0;
+    element<HTMLButtonElement>("copy-chapters").disabled = brief.chapters.length === 0;
+    element("description-hint").textContent = brief.chapters.length
+      ? "Includes the chapter list, ready for YouTube’s description field."
+      : "Ready for YouTube’s description field.";
     element("chapters").textContent = chaptersText(brief);
     element("tags").textContent = brief.tags.join(", ");
     element("results").hidden = false;
@@ -124,6 +137,7 @@ export function initUI(
       return;
     }
     working = true;
+    updateChapterControls();
     generate.disabled = true;
     fileInput.disabled = true;
     element<HTMLInputElement>("reuse").disabled = true;
@@ -135,7 +149,7 @@ export function initUI(
     const token = doc.querySelector<HTMLMetaElement>('meta[name="session-token"]')?.content ?? "";
     try {
       const response = await deps.fetch(
-        `/api/jobs?name=${encodeURIComponent(file.name)}&reuse=${element<HTMLInputElement>("reuse").checked}`,
+        `/api/jobs?name=${encodeURIComponent(file.name)}&reuse=${element<HTMLInputElement>("reuse").checked}&chapters=${includeChapters.checked}${includeChapters.checked ? `&chapterCount=${encodeURIComponent(chapterCount.value)}&chapterMinSeconds=${encodeURIComponent(chapterMinimum.value)}` : ""}`,
         {
           method: "POST",
           headers: { "content-type": "video/mp4", "x-session-token": token },
@@ -165,6 +179,7 @@ export function initUI(
       progress.textContent = "Stopped. Your existing outputs are preserved.";
     } finally {
       working = false;
+      updateChapterControls();
       generate.disabled = false;
       fileInput.disabled = false;
       element<HTMLInputElement>("reuse").disabled = false;

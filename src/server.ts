@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { hashFile, validateMp4 } from "./pipeline.js";
 import { listDiagnostics, deleteDiagnosticRun } from "./diagnostics.js";
 import type { Brief } from "./distillation.js";
+import { parseChapterSettings, type ChapterSettings } from "./chapters.js";
 interface Job {
   status: "running" | "complete" | "error";
   stage: string;
@@ -22,6 +23,7 @@ export interface ServerOptions {
     out: string,
     reuse: boolean,
     progress: (stage: string) => void,
+    chapters: ChapterSettings,
   ) => Promise<{ brief: Brief; prefix: string; reused: boolean }>;
 }
 export function createLocalServer(options: ServerOptions) {
@@ -116,6 +118,11 @@ export function createLocalServer(options: ServerOptions) {
           json(res, 409, { error: "A recording is already processing. Wait for it to finish." });
           return;
         }
+        const chapters = parseChapterSettings({
+          enabled: url.searchParams.get("chapters") ?? undefined,
+          count: url.searchParams.get("chapterCount") ?? undefined,
+          minDurationSeconds: url.searchParams.get("chapterMinSeconds") ?? undefined,
+        });
         const name = url.searchParams.get("name") ?? "";
         if (
           !name ||
@@ -170,6 +177,7 @@ export function createLocalServer(options: ServerOptions) {
               (stage) => {
                 job.stage = stage;
               },
+              chapters,
             );
             Object.assign(job, result);
             job.stage = "Cleaning temporary upload";

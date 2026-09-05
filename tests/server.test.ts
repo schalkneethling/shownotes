@@ -203,3 +203,44 @@ it("rejects diagnostic deletion while a recording job is busy", async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
 });
+it.each([
+  { query: "chapters=false", settings: { enabled: false, minDurationSeconds: 10 } },
+  {
+    query: "chapters=true&chapterCount=3&chapterMinSeconds=5",
+    settings: { enabled: true, count: 3, minDurationSeconds: 5 },
+  },
+])(
+  "passes chapter settings from upload to the shared pipeline: $query",
+  async ({ query, settings }) => {
+    const s = await setup();
+    const body = Buffer.from([
+      0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115, 111, 109, 109, 112,
+      52, 50,
+    ]);
+    const response = await fetch(`${s.url}/api/jobs?name=clip.mp4&${query}`, {
+      method: "POST",
+      headers: { "content-type": "video/mp4", "x-session-token": s.token },
+      body,
+    });
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(s.processVideo).toHaveBeenCalled());
+    expect(s.processVideo).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      false,
+      expect.any(Function),
+      settings,
+    );
+  },
+);
+it("rejects invalid chapter settings before processing the upload", async () => {
+  const s = await setup();
+  const response = await fetch(`${s.url}/api/jobs?name=clip.mp4&chapterCount=99`, {
+    method: "POST",
+    headers: { "content-type": "video/mp4", "x-session-token": s.token },
+    body: "synthetic",
+  });
+  expect(response.status).toBe(400);
+  expect(((await response.json()) as { error: string }).error).toContain("Chapter count");
+  expect(s.processVideo).not.toHaveBeenCalled();
+});

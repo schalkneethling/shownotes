@@ -25,3 +25,13 @@ it.each([
 it("supports help without prerequisites", () => {
   expect(parseOptions(["--help"], {}).help).toBe(true);
 });
+it("parses chapter controls with preserved defaults", () => {
+  expect(parseOptions(["a.mp4"], {}).chapters).toEqual({ enabled: true, minDurationSeconds: 10 });
+  expect(parseOptions(["a.mp4", "--no-chapters"], {}).chapters.enabled).toBe(false);
+  expect(
+    parseOptions(["a.mp4", "--chapter-count", "3", "--chapter-min-seconds", "5"], {}).chapters,
+  ).toEqual({ enabled: true, count: 3, minDurationSeconds: 5 });
+});
+it.each(["0", "9", "abc"])("rejects invalid chapter counts %s", (count) => {
+  expect(() => parseOptions(["a.mp4", "--chapter-count", count], {})).toThrow();
+});

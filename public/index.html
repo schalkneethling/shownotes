@@ -19,7 +19,7 @@
         <p class="eyebrow">01 / YOUR RECORDING</p>
         <h1 id="upload-heading">A good stream deserves good notes.</h1>
         <p class="intro">
-          Add your MP4. Get five titles, two descriptions, and chapters ready for YouTube.
+          Add your MP4. Get five titles, two descriptions, and optional chapters ready for YouTube.
         </p>
         <form id="upload-form">
           <div id="dropzone">
@@ -28,6 +28,44 @@
             ><input id="video" type="file" accept=".mp4,video/mp4" required />
             <p id="file-name">MP4 · up to MAX_UPLOAD MB</p>
           </div>
+          <fieldset>
+            <legend>Chapters</legend>
+            <label class="reuse"
+              ><input id="include-chapters" type="checkbox" checked /> Include chapters</label
+            >
+            <div class="chapter-controls">
+              <label for="chapter-count"
+                >Chapter count
+                <select id="chapter-count">
+                  <option value="auto">Auto (5–8)</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                </select>
+              </label>
+              <label for="chapter-min-seconds"
+                >Minimum duration (seconds)
+                <input
+                  id="chapter-min-seconds"
+                  type="number"
+                  min="1"
+                  max="3600"
+                  step="1"
+                  value="10"
+                  required
+                />
+              </label>
+            </div>
+            <p class="hint">
+              For short clips, omit chapters or choose fewer, shorter chapters. YouTube chapters
+              need at least three chapters of ten seconds each.
+            </p>
+          </fieldset>
           <div class="actions">
             <label class="reuse"
               ><input id="reuse" type="checkbox" checked /> Reuse a matching transcript</label
@@ -64,10 +102,12 @@
           <legend>Description <span>Choose one of two</span></legend>
           <div id="descriptions" class="descriptions"></div>
           <button id="copy-description" type="button" disabled>Copy selected description</button>
-          <p class="hint">Includes the chapter list, ready for YouTube’s description field.</p>
+          <p id="description-hint" class="hint">
+            Includes the chapter list, ready for YouTube’s description field.
+          </p>
         </fieldset>
         <div class="extras">
-          <section>
+          <section id="chapter-section">
             <h3>Chapters</h3>
             <pre id="chapters"></pre>
             <button id="copy-chapters" type="button">Copy chapters</button>

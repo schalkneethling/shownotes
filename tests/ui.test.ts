@@ -184,3 +184,56 @@ it("does not offer diagnostic deletion for active runs", async () => {
   );
   expect(dom.window.document.querySelector("#diagnostic-list button")).toBeNull();
 });
+it("hides chapter controls/results and copies a clean description when chapters are omitted", async () => {
+  const dom = new JSDOM(await readFile("public/index.html", "utf8"));
+  const doc = dom.window.document;
+  const copy = vi.fn(async () => {});
+  const ui = initUI(doc, { copy, fetch: vi.fn() as unknown as typeof fetch });
+  const include = doc.querySelector<HTMLInputElement>("#include-chapters")!;
+  include.click();
+  expect(doc.querySelector<HTMLSelectElement>("#chapter-count")!.disabled).toBe(true);
+  expect(doc.querySelector<HTMLInputElement>("#chapter-min-seconds")!.disabled).toBe(true);
+  ui.showResult({
+    titles: ["A", "B", "C", "D", "E"],
+    descriptions: [
+      ["First", "Second"],
+      ["Other", "Ending"],
+    ],
+    chapters: [],
+    tags: ["web"],
+  });
+  expect(doc.querySelector<HTMLElement>("#chapter-section")!.hidden).toBe(true);
+  doc.querySelector<HTMLInputElement>('input[name="description"][value="0"]')!.click();
+  doc.querySelector<HTMLButtonElement>("#copy-description")!.click();
+  await Promise.resolve();
+  expect(copy).toHaveBeenCalledWith("First\n\nSecond");
+});
+it.each([false, true])("submits chosen chapter settings (include: %s)", async (enabled) => {
+  const dom = new JSDOM(await readFile("public/index.html", "utf8"));
+  const doc = dom.window.document;
+  const request = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ error: "Synthetic stop" }), { status: 400 }));
+  initUI(doc, { copy: async () => {}, fetch: request });
+  if (!enabled) doc.querySelector<HTMLInputElement>("#include-chapters")!.click();
+  doc.querySelector<HTMLSelectElement>("#chapter-count")!.value = "3";
+  doc.querySelector<HTMLInputElement>("#chapter-min-seconds")!.value = "5";
+  const drop = new dom.window.Event("drop", { cancelable: true });
+  Object.defineProperty(drop, "dataTransfer", {
+    value: { files: [new dom.window.File(["synthetic"], "clip.mp4")] },
+  });
+  doc.querySelector("#dropzone")!.dispatchEvent(drop);
+  doc
+    .querySelector("#upload-form")!
+    .dispatchEvent(new dom.window.Event("submit", { cancelable: true }));
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+  const url = new URL(request.mock.calls[0]![0], "http://localhost");
+  expect(url.searchParams.get("chapters")).toBe(String(enabled));
+  if (enabled) {
+    expect(url.searchParams.get("chapterCount")).toBe("3");
+    expect(url.searchParams.get("chapterMinSeconds")).toBe("5");
+  }
+  await vi.waitFor(() =>
+    expect(doc.querySelector<HTMLButtonElement>("#generate")!.disabled).toBe(false),
+  );
+});

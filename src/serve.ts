@@ -15,7 +15,7 @@ if (
 const server = createLocalServer({
   out: resolve(process.env.SHOWNOTES_OUT || "output"),
   maxBytes,
-  processVideo: (input, out, reuse, onProgress) =>
+  processVideo: (input, out, reuse, onProgress, chapters) =>
     pipeline(
       {
         input,
@@ -24,6 +24,7 @@ const server = createLocalServer({
         model: process.env.WHISPER_MODEL,
         forceTranscribe: !reuse,
         onProgress,
+        chapters,
       },
       productionDependencies(
         process.env.ANTHROPIC_API_KEY,

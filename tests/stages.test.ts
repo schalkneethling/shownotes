@@ -294,3 +294,48 @@ it("bounds paragraphs so a description plus chapters fits YouTube", async () => 
   );
   await expect(distill(segments, client, "test")).rejects.toThrow();
 });
+
+describe("configurable chapter distillation", () => {
+  const short = [0, 7000, 14000, 21000].map((startMs, i) => ({
+    startMs,
+    endMs: i === 3 ? 26200 : startMs + 7000,
+    text: "Synthetic speech",
+  }));
+  it("generates titles/descriptions for a chapterless short clip", async () => {
+    const { client, fetch } = clientFor(JSON.stringify({ ...brief, chapters: [] }));
+    const result = await distill(short, client, "test", undefined, { enabled: false });
+    expect(result.chapters).toEqual([]);
+    expect(result.titles).toHaveLength(5);
+    expect(result.descriptions).toHaveLength(2);
+    const request = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(request[1].body));
+    expect(body.system).toContain("Do not generate chapters");
+  });
+  it("rejects impossible settings before making a request", async () => {
+    const { client, fetch } = clientFor(JSON.stringify(brief));
+    await expect(distill(short, client, "test")).rejects.toThrow("Disable chapters");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("uses a requested count and minimum duration", async () => {
+    const { client } = clientFor(
+      JSON.stringify({ ...brief, chapters: brief.chapters.slice(0, 3) }),
+    );
+    expect(
+      (
+        await distill(short, client, "test", undefined, { count: 3, minDurationSeconds: 5 })
+      ).chapters.map((c) => c.startMs),
+    ).toEqual([0, 7000, 14000]);
+  });
+  it("rejects a response with the wrong requested chapter count", async () => {
+    const { client } = clientFor(
+      JSON.stringify({ ...brief, chapters: brief.chapters.slice(0, 2) }),
+    );
+    await expect(
+      distill(short, client, "test", undefined, { count: 3, minDurationSeconds: 5 }),
+    ).rejects.toThrow();
+  });
+  it("does not accept chapters when omitted", async () => {
+    const { client } = clientFor(JSON.stringify(brief));
+    await expect(distill(short, client, "test", undefined, { enabled: false })).rejects.toThrow();
+  });
+});

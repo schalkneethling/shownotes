@@ -14,7 +14,7 @@ The tool takes one MP4 file as input and produces one output bundle. There are t
 
 **Transcription.** Shell out to a local `whisper.cpp` binary against the extracted WAV, using a `ggml` model already present on disk (do not have the tool download models automatically; treat the model file as a prerequisite the user supplies). Capture both the plain-text transcript and the segment-level timestamps whisper.cpp emits, since the timestamps are what let the distillation stage generate chapter markers later.
 
-**Distillation.** Send the transcript to the Claude API with a single prompt that returns exactly five title candidates, two different two-to-three paragraph descriptions, five to eight timestamped chapter markers built from the segment data, and five to ten tags. Request structured JSON back rather than parsing prose, since the output needs to be reliably split into those four fields.
+**Distillation.** Send the transcript to the Claude API with a single prompt that returns exactly five title candidates, two different two-to-three paragraph descriptions, optional timestamped chapter markers built from the segment data (default five to eight, configurable exact count one to eight and minimum duration one to 3600 seconds, default ten), and five to ten tags. Request structured JSON back rather than parsing prose, since the output needs to be reliably split into those four fields.
 
 ## Prerequisites (assume already installed, do not install these)
 
@@ -65,4 +65,4 @@ Speaker diarization, since these are solo streams. Remote hosting or a public-fa
 
 Alongside the CLI, serve a loopback-only web interface with streamed single-MP4 upload, drag/drop and keyboard file selection, stage progress, exactly five title candidates and two descriptions, explicit radio selection and clipboard feedback. Keep the API key server-side, protect API actions with session and loopback Host/Origin checks, and retain matching transcript cache reuse. Both interfaces share the pipeline and diagnostic lifecycle. Diagnostic cleanup shows file names/sizes, requires deliberate deletion, and preserves active runs and final outputs.
 
-Choose topic-shift chapters aligned to supplied segment IDs. Derive timestamps locally, starting at 00:00. Output readable Markdown with plain-text, copyable YouTube fields; the CLI defaults to candidate 1 and includes alternatives.
+Both interfaces expose chapter inclusion, count, and minimum duration. Check segment-aligned feasibility before the paid request, preserve transcript reuse when settings change, and omit empty chapter sections from chapterless results. Choose topic-shift chapters aligned to supplied segment IDs. Derive timestamps locally, starting at 00:00. Output readable Markdown with plain-text, copyable YouTube fields; the CLI defaults to candidate 1 and includes alternatives.

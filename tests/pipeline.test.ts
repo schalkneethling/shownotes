@@ -34,7 +34,13 @@ async function setup() {
   const deps = {
     check: vi.fn(async () => {}),
     extract: vi.fn(async () => {}),
-    transcribe: vi.fn(async () => [{ startMs: 0, endMs: 60000, text: "Synthetic transcript" }]),
+    transcribe: vi.fn(async () =>
+      Array.from({ length: 5 }, (_, i) => ({
+        startMs: i * 10000,
+        endMs: (i + 1) * 10000,
+        text: "Synthetic transcript",
+      })),
+    ),
     distill: vi.fn(async () => brief),
   };
   return { dir, input, model, deps };
@@ -156,4 +162,22 @@ describe("failed Whisper output retention", () => {
     expect(files).not.toContain("stream.transcript.json");
     expect(s.deps.distill).not.toHaveBeenCalled();
   });
+});
+it("preserves short-clip cache after infeasible chapters and reuses it with chapters omitted", async () => {
+  const s = await setup();
+  s.deps.transcribe.mockResolvedValue([{ startMs: 0, endMs: 26200, text: "Synthetic transcript" }]);
+  const opts = { input: s.input, out: s.dir, model: s.model, binary: "whisper-cli" };
+  await expect(pipeline(opts, s.deps)).rejects.toThrow("Disable chapters");
+  expect(s.deps.distill).not.toHaveBeenCalled();
+  await pipeline({ ...opts, skipTranscribe: true, chapters: { enabled: false } }, s.deps);
+  expect(s.deps.extract).toHaveBeenCalledTimes(1);
+  expect(s.deps.distill).toHaveBeenCalledWith(expect.any(Array), {
+    enabled: false,
+    minDurationSeconds: 10,
+  });
+});
+it("omits empty chapters from saved and copied description text", () => {
+  const output = renderBrief({ ...brief, chapters: [] });
+  expect(output).toContain("First paragraph.\n\nSecond paragraph.\n\n## Tags");
+  expect(output).not.toContain("00:00");
 });

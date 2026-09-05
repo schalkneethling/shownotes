@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { parseChapterSettings } from "./chapters.js";
 export function parseOptions(args: string[], env: NodeJS.ProcessEnv) {
   const { values, positionals } = parseArgs({
     args,
@@ -9,6 +10,9 @@ export function parseOptions(args: string[], env: NodeJS.ProcessEnv) {
       out: { type: "string" },
       "skip-transcribe": { type: "boolean" },
       "force-transcribe": { type: "boolean" },
+      "no-chapters": { type: "boolean" },
+      "chapter-count": { type: "string" },
+      "chapter-min-seconds": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -17,6 +21,11 @@ export function parseOptions(args: string[], env: NodeJS.ProcessEnv) {
   if (values["skip-transcribe"] && values["force-transcribe"])
     throw new Error("Choose either --skip-transcribe or --force-transcribe.");
   return {
+    chapters: parseChapterSettings({
+      enabled: values["no-chapters"] ? "false" : "true",
+      count: values["chapter-count"],
+      minDurationSeconds: values["chapter-min-seconds"],
+    }),
     help: values.help ?? false,
     input: positionals[0] ?? "",
     out: values.out,
@@ -32,6 +41,9 @@ export const help = `Usage: video-brief recording.mp4 [options]
 --model FILE          Local ggml model (default: WHISPER_MODEL)
 --skip-transcribe     Require and reuse a valid cached transcript
 --force-transcribe    Regenerate the transcript even when cache matches
+--no-chapters         Generate titles/descriptions/tags without chapters
+--chapter-count N     Exact count 1–8, or auto (default: automatic 5–8)
+--chapter-min-seconds N  Minimum duration 1–3600 seconds (default: 10)
 --help, -h            Show this help
 
 Matching transcripts are reused by default. CLI copy defaults to candidate 1;

@@ -57,8 +57,8 @@ Open **http://127.0.0.1:4317** at the default port. If you configure `PORT`, ope
 
 1. Drop one MP4 onto the upload area, or use the keyboard-accessible file picker.
 2. Leave **Reuse a matching transcript** checked to avoid repeat transcription. Uncheck it to regenerate the transcript.
-3. Select **Generate shownotes**. Progress reports upload, extraction, local transcription, and candidate generation. It reports stages, not a predicted completion time.
-4. Select a preferred title and description. Copy buttons remain disabled until a choice is made. **Copy selected description** includes the chapters.
+3. Leave **Include chapters** checked for automatic 5–8 chapters with a ten-second minimum, choose an exact count (1–8) and minimum duration (1–3600 seconds), or uncheck it for short clips. Select **Generate shownotes**. Progress reports upload, extraction, local transcription, and candidate generation. It reports stages, not a predicted completion time.
+4. Select a preferred title and description. Copy buttons remain disabled until a choice is made. **Copy selected description** includes chapters when enabled. Chapterless results hide the chapter section and copy descriptions without an empty timestamp block.
 5. Copy tags and, if needed, the separate chapter list. Clipboard success or failure is announced. If the browser denies clipboard access, select and copy the visible text manually.
 
 Keep the page open during processing. One recording can run at a time. Uploads stream to disk, default to a 4096 MB limit, and must have an MP4 filename, media type, and ISO media header. ffmpeg performs the actual media decoding. The server binds only to `127.0.0.1`, checks the Host and Origin, and requires a per-session token for API requests. Do not expose it through a proxy or tunnel.
@@ -84,13 +84,16 @@ node dist/cli.js --help
 
 Options:
 
-| Option               | Behavior                                                           |
-| -------------------- | ------------------------------------------------------------------ |
-| `--model FILE`       | Override the local model path from `WHISPER_MODEL`.                |
-| `--out DIRECTORY`    | Output directory; defaults to beside the input.                    |
-| `--skip-transcribe`  | Require an existing valid cache; fail clearly if missing or stale. |
-| `--force-transcribe` | Ignore a matching cache and transcribe again.                      |
-| `--help`, `-h`       | Show usage.                                                        |
+| Option                    | Behavior                                                           |
+| ------------------------- | ------------------------------------------------------------------ |
+| `--model FILE`            | Override the local model path from `WHISPER_MODEL`.                |
+| `--out DIRECTORY`         | Output directory; defaults to beside the input.                    |
+| `--skip-transcribe`       | Require an existing valid cache; fail clearly if missing or stale. |
+| `--force-transcribe`      | Ignore a matching cache and transcribe again.                      |
+| `--no-chapters`           | Generate titles, descriptions, and tags without chapters.          |
+| `--chapter-count N`       | Exact count 1–8, or `auto` (default: 5–8).                         |
+| `--chapter-min-seconds N` | Minimum chapter duration 1–3600 seconds (default: 10).             |
+| `--help`, `-h`            | Show usage.                                                        |
 
 Matching cache entries are reused automatically even without `--skip-transcribe`. Do not combine the skip and force options. The CLI chooses title candidate 1 and description candidate 1 as readable defaults; alternatives remain in the brief.
 
@@ -126,7 +129,7 @@ npm run diagnostics -- --out ./output --delete RUN_ID --scope VIDEO_HASH
 
 For CLI runs directly in the chosen output directory, omit `--scope` (default `.`). The list includes both direct runs and web runs in immediate video-hash subdirectories. `node dist/cli.js diagnostics --help` shows the same command without npm. There is no bulk delete or automatic expiry. Cleanup refuses symlinks, unknown files, invalid ownership/metadata, traversal paths and active runs. An interrupted/crashed run may remain marked active; it is deliberately excluded from automated deletion and needs manual inspection with the app stopped. Never edit ownership metadata to bypass these safeguards.
 
-For the reported 64-minute failure, the earlier version discarded the raw output, so its root cause is unknown. After restarting into this fix, retry with a **5–10 minute, speech-heavy MP4** with enough topic changes for the required minimum five chapters. Do not use `--skip-transcribe`: no valid transcript cache was produced. If it fails again, keep the diagnostic directory until the exact read/parser/validation error has been investigated, then clean it up using the UI or CLI. No real recording was rerun to validate this diagnostic change.
+The earlier 64-minute failure discarded raw output, so its root cause is unknown. For a short speech-heavy test clip, omit chapters. If a valid transcript cache exists, retry the same MP4 with transcript reuse checked, or use `--skip-transcribe --no-chapters` in the CLI. If transcription itself failed, no valid cache exists: transcribe again, keep any retained diagnostics until the exact error has been investigated, then clean them up using the UI or CLI.
 
 ## Configuration
 
@@ -141,7 +144,25 @@ Put non-secret overrides alongside the reference in `.env.local`:
 | `PORT`           | `4317`                                                   |
 | `MAX_UPLOAD_MB`  | `4096`                                                   |
 
-The app requests five distinct titles, two distinct descriptions of two or three paragraphs (at most 1200 characters per paragraph), five to eight topic-shift chapters, and five to ten tags. Claude chooses segment IDs; the application derives chapter times from those boundaries, starts the first chapter at 00:00, and requires ten-second spacing. Recordings too short or sparse for five valid chapters can fail validation. The request allows up to 8192 output tokens; truncation and incomplete/malformed responses still fail without an automatic retry. This is headroom, not a guarantee for every language or response. This version targets 30–60 minute developer recordings. Review generated copy before publication; no paid quality evaluation is included in the automated suite.
+The app always requests five distinct titles, two distinct descriptions of two or three paragraphs (at most 1200 characters per paragraph), and five to ten tags. Chapters default to an automatic 5–8 with a ten-second minimum; you can request exactly 1–8 chapters, choose a minimum of 1–3600 seconds, or omit them entirely.
+
+Before calling Claude, the app checks whether the requested count fits at the actual transcript segment boundaries, rounded down to seconds, including the final chapter’s duration. Impossible settings fail locally with guidance to omit chapters or reduce the count/minimum. The validated transcript remains cached, and changing chapter settings does not invalidate it. Feasible timing does not guarantee suitable topic changes or a valid model response: returned chapter IDs, count, spacing, and final duration are still checked.
+
+For a cached short clip:
+
+```sh
+npm run brief -- ./recording.mp4 --out ./output --skip-transcribe --no-chapters
+```
+
+For three shorter timestamp entries:
+
+```sh
+npm run brief -- ./recording.mp4 --out ./output --chapter-count 3 --chapter-min-seconds 5
+```
+
+Counts below three or durations below ten seconds produce timestamp lists that do not meet [YouTube’s manual chapter requirements](https://support.google.com/youtube/answer/9884579). When enabled, the first chapter starts at 00:00; Claude selects supplied segment IDs and timestamps are derived locally. When omitted, the returned chapter array is empty and descriptions/Markdown have no appended chapter block.
+
+The request allows up to 8192 output tokens; truncation and incomplete/malformed responses still fail without an automatic retry. This is headroom, not a guarantee for every language or response. Review generated copy before publication; no paid quality evaluation is included in the automated suite.
 
 ## Development and verification
 

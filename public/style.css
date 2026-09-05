@@ -325,3 +325,22 @@ footer {
 #diagnostic-list {
   overflow-wrap: anywhere;
 }
+
+.chapter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.chapter-controls select,
+.chapter-controls input {
+  display: block;
+  font: inherit;
+  padding: 8px;
+  max-width: 100%;
+}
+
+.extras:has(#chapter-section[hidden]) {
+  grid-template-columns: 1fr;
+}
