@@ -127,6 +127,8 @@ export async function pipeline(
     const scratch = await mkdtemp(join(out, ".shownotes-"));
     let diagnostics: DiagnosticRun | undefined;
     let preserveDiagnostics = false;
+    let failed = false;
+    let operationError: unknown;
     try {
       const audio = join(scratch, "audio.wav");
       progress("Extracting audio");
@@ -146,6 +148,7 @@ export async function pipeline(
           preserveDiagnostics = true;
           throw new Error(
             `${error.message}\nWhisper diagnostic directory: ${diagnostics.path} (raw JSON/TXT retained if emitted).`,
+            { cause: error },
           );
         }
         throw error;
@@ -158,11 +161,35 @@ export async function pipeline(
           2,
         ) + "\n",
       );
-    } finally {
-      await rm(scratch, { recursive: true, force: true });
-      if (diagnostics) await finishDiagnosticRun(diagnostics, preserveDiagnostics);
+    } catch (error) {
+      failed = true;
+      operationError = error;
     }
+    const cleanupErrors: unknown[] = [];
+    try {
+      await rm(scratch, { recursive: true, force: true });
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (diagnostics) {
+      try {
+        await finishDiagnosticRun(diagnostics, preserveDiagnostics);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    if (cleanupErrors.length) {
+      const original = failed
+        ? `${operationError instanceof Error ? operationError.message : "Processing failed."}\n`
+        : "";
+      throw new AggregateError(
+        [...(failed ? [operationError] : []), ...cleanupErrors],
+        `${original}Cleanup failed: ${cleanupErrors.map((error) => (error instanceof Error ? error.message : "Unknown cleanup error")).join("; ")}`,
+      );
+    }
+    if (failed) throw operationError;
   }
+  if (!segments) throw new Error("No validated transcript was produced.");
   await atomicWrite(`${prefix}.transcript.txt`, segments.map((s) => s.text).join("\n") + "\n");
   planChapters(segments, chapters);
   progress(reused ? "Reusing transcript · generating candidates" : "Generating candidates");

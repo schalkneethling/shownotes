@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { lstat, mkdir, open, readdir, realpath, unlink, rmdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod/v4";
+import { constants } from "node:fs";
 const rootName = ".whisper-diagnostics";
 const ownership = "shownotes-whisper-diagnostics-v1\n";
 const idPattern = /^run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -34,17 +35,63 @@ async function checkDirectory(path: string, optional = false): Promise<boolean> 
   if (!info) return false;
   if (info.isSymbolicLink()) throw new Error("Refusing diagnostic symlink directory.");
   if (!info.isDirectory()) throw new Error("Invalid diagnostic directory.");
+  if (!process.getuid || info.uid !== process.getuid() || info.mode & 0o022)
+    throw new Error("Unsafe diagnostic directory ownership or permissions.");
   return true;
+}
+// Canonical ancestors must not let another user replace a checked directory.
+// Sticky ancestors (such as /tmp) protect entries owned by this user.
+async function checkAncestors(path: string): Promise<void> {
+  for (let parent = dirname(path); ; parent = dirname(parent)) {
+    const info = await lstat(parent);
+    if (
+      !process.getuid ||
+      !info.isDirectory() ||
+      (info.uid !== 0 && info.uid !== process.getuid()) ||
+      (info.mode & 0o022 && !(info.mode & 0o1000))
+    )
+      throw new Error("Unsafe diagnostic ancestor ownership or permissions.");
+    if (dirname(parent) === parent) break;
+  }
+}
+function missing(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+async function readRegular(path: string): Promise<string> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = await file.stat();
+    if (
+      !info.isFile() ||
+      info.nlink !== 1 ||
+      !process.getuid ||
+      info.uid !== process.getuid() ||
+      info.mode & 0o022
+    )
+      throw new Error("Unsafe diagnostic file ownership or permissions.");
+    return await file.readFile("utf8");
+  } finally {
+    await file.close();
+  }
+}
+async function removeRun(root: string, info: DiagnosticInfo): Promise<void> {
+  const path = join(root, info.id);
+  for (const file of info.files) await unlink(join(path, file.name));
+  await rmdir(path);
 }
 async function regularFile(path: string) {
   const info = await lstat(path);
   if (info.isSymbolicLink()) throw new Error("Refusing diagnostic symlink file.");
   if (!info.isFile()) throw new Error("Unrecognized diagnostic file type.");
+  if (!process.getuid || info.uid !== process.getuid() || info.mode & 0o022 || info.nlink !== 1)
+    throw new Error("Unsafe diagnostic file ownership or permissions.");
   return info;
 }
 async function ownedRoot(out: string, create = false): Promise<string | undefined> {
   if (!(await checkDirectory(resolve(out), !create))) return;
-  const root = join(await realpath(out), rootName);
+  const canonical = await realpath(out);
+  await checkAncestors(canonical);
+  const root = join(canonical, rootName);
   if (create) {
     try {
       await mkdir(root, { mode: 0o700 });
@@ -56,7 +103,7 @@ async function ownedRoot(out: string, create = false): Promise<string | undefine
   if (!(await checkDirectory(root, true))) return;
   try {
     await regularFile(join(root, ".owner"));
-    if ((await readFile(join(root, ".owner"), "utf8")) !== ownership) throw new Error();
+    if ((await readRegular(join(root, ".owner"))) !== ownership) throw new Error();
   } catch {
     throw new Error("Unrecognized diagnostic root ownership; no files were changed.");
   }
@@ -73,8 +120,9 @@ async function inspectRun(root: string, id: string, scope: string): Promise<Diag
   let manifest: z.infer<typeof manifestSchema>;
   try {
     await regularFile(join(path, "run.json"));
-    manifest = manifestSchema.parse(JSON.parse(await readFile(join(path, "run.json"), "utf8")));
-  } catch {
+    manifest = manifestSchema.parse(JSON.parse(await readRegular(join(path, "run.json"))));
+  } catch (error) {
+    if (missing(error)) throw error;
     throw new Error("Invalid diagnostic run metadata; no files were changed.");
   }
   if (manifest.id !== id || !Number.isFinite(Date.parse(manifest.createdAt)))
@@ -119,19 +167,34 @@ export async function finishDiagnosticRun(run: DiagnosticRun, retain: boolean): 
   const root = await ownedRoot(run.out);
   if (!root) throw new Error("Missing diagnostic root.");
   const info = await inspectRun(root, run.id, ".");
-  if (retain)
-    await writeFile(
+  if (retain) {
+    const file = await open(
       join(root, run.id, "run.json"),
-      JSON.stringify({
+      constants.O_RDWR | constants.O_NOFOLLOW,
+    );
+    try {
+      const stat = await file.stat();
+      if (
+        !stat.isFile() ||
+        stat.nlink !== 1 ||
+        !process.getuid ||
+        stat.uid !== process.getuid() ||
+        stat.mode & 0o022
+      )
+        throw new Error("Unsafe diagnostic metadata ownership or permissions.");
+      const content = JSON.stringify({
         owner: "shownotes",
         version: 1,
         id: run.id,
         createdAt: info.createdAt,
         state: "retained",
-      }),
-      { mode: 0o600 },
-    );
-  else await rm(join(root, run.id), { recursive: true });
+      });
+      await file.writeFile(content);
+      await file.truncate(Buffer.byteLength(content));
+    } finally {
+      await file.close();
+    }
+  } else await removeRun(root, info);
 }
 export async function listDiagnostics(out: string): Promise<DiagnosticInfo[]> {
   if (!(await checkDirectory(resolve(out), true))) return [];
@@ -143,7 +206,12 @@ export async function listDiagnostics(out: string): Promise<DiagnosticInfo[]> {
     if (!root) continue;
     for (const id of await readdir(root)) {
       if (id === ".owner") continue;
-      runs.push(await inspectRun(root, id, scope));
+      try {
+        runs.push(await inspectRun(root, id, scope));
+      } catch (error) {
+        if (missing(error) && !(await checkDirectory(join(root, id), true))) continue;
+        throw error;
+      }
     }
   }
   return runs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -156,5 +224,5 @@ export async function deleteDiagnosticRun(out: string, scope: string, id: string
   if (!root) throw new Error("Diagnostic run not found.");
   const info = await inspectRun(root, id, scope);
   if (info.state !== "retained") throw new Error("Cannot delete active diagnostic run.");
-  await rm(join(root, id), { recursive: true });
+  await removeRun(root, info);
 }

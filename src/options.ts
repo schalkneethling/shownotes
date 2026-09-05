@@ -48,6 +48,6 @@ export const help = `Usage: video-brief recording.mp4 [options]
 
 Matching transcripts are reused by default. CLI copy defaults to candidate 1;
 all five titles and both descriptions are included in the brief.
-Run through Varlock: npm run brief -- recording.mp4 --out output
+Run with internal Varlock configuration: npm run brief -- recording.mp4 --out output
 Diagnostic maintenance (no secrets): video-brief diagnostics --help
 `;

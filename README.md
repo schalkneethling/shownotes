@@ -43,7 +43,7 @@ If 1Password reports multiple accounts, choose the account that contains your va
 
 Keep only one `@initOp` header. The installed plugin requires a static account argument and does not forward `OP_ACCOUNT` to its CLI subprocess. Account selection belongs in local configuration, not the shared schema.
 
-The checked-in `.env.schema` declares the plugin and marks the API key required and sensitive. `.env.local` is ignored by Git. The startup commands disable persistent Varlock caching and inject runtime variables only. The API key is never sent to the browser or to ffmpeg/Whisper subprocesses. Tests use a synthetic override and do not access 1Password.
+The checked-in `.env.schema` declares the plugin and marks the API key required and sensitive. `.env.local` is ignored by Git. Both startup paths disable persistent Varlock caching. The web server still receives runtime variables through the Varlock wrapper. The CLI resolves only its four configuration keys through Varlock’s graph API and passes the API key directly to the Anthropic client without writing it into `process.env`. The API key is never sent to the browser or to ffmpeg/Whisper subprocesses. Tests use a synthetic override and do not access 1Password.
 
 For this workstation, local binary/model paths and the supplied secret reference have already been configured. Do not overwrite an existing `.env.local` with the example.
 
@@ -76,7 +76,7 @@ npm run build
 npm run brief -- ./recording.mp4 --out ./output
 ```
 
-The `brief` script runs the compiled `video-brief` CLI through Varlock. Help does not require secrets:
+The `brief` script runs the compiled `video-brief` CLI directly. Normal processing resolves configuration with Varlock and its 1Password plugin inside the CLI; help and diagnostic maintenance skip resolution. The resolver uses the installed Varlock internal graph API, covered by real-schema tests; verify those tests when upgrading Varlock. Help does not require secrets:
 
 ```sh
 node dist/cli.js --help
@@ -111,7 +111,7 @@ Transcripts are saved before requesting Claude, so API failure does not waste co
 
 Read failures distinguish missing from unreadable Whisper JSON. Parsing errors distinguish invalid JSON syntax from segment schema and timestamp validation errors; segment indexes are zero-based. Messages never include transcript text. Validation is not relaxed or malformed output repaired automatically.
 
-On these output errors, any raw `whisper.json` and `whisper.txt` emitted by Whisper are retained alongside ownership/lifecycle metadata in a unique `.whisper-diagnostics/run-.../` directory **under that run’s requested output directory**. The error reports its location. Web jobs therefore retain diagnostics under `output/<video-sha256>/.whisper-diagnostics/`. Bulky temporary audio and uploaded MP4 copies are still removed. Successful runs remove their raw diagnostic files after saving the intended transcript cache. Diagnostic directories are ignored by Git and contain private text; do not publish them.
+On these output errors, any raw `whisper.json` and `whisper.txt` emitted by Whisper are retained alongside ownership/lifecycle metadata in a unique `.whisper-diagnostics/run-.../` directory **under that run’s requested output directory**. The error reports its location. Web jobs therefore retain diagnostics under `output/<video-sha256>/.whisper-diagnostics/`. Cleanup attempts to remove temporary audio and uploaded MP4 copies. Audio cleanup failure does not prevent diagnostic finalization; the reported error preserves the original transcription reason and retained location alongside cleanup failures. Successful runs remove their raw diagnostic files after saving the intended transcript cache. Diagnostic directories are ignored by Git and contain private text; do not publish them.
 
 After diagnosing the problem, use **Retained diagnostics → Review diagnostic files** in the UI. It lists file names, byte sizes, and run state without reading transcript text into the browser. Select **Delete this diagnostic run** and confirm the displayed scope. Saved transcript/brief files are preserved. The server rejects cleanup while a recording is processing, and active diagnostic runs are protected.
 
@@ -128,6 +128,10 @@ npm run diagnostics -- --out ./output --delete RUN_ID --scope VIDEO_HASH
 ```
 
 For CLI runs directly in the chosen output directory, omit `--scope` (default `.`). The list includes both direct runs and web runs in immediate video-hash subdirectories. `node dist/cli.js diagnostics --help` shows the same command without npm. There is no bulk delete or automatic expiry. Cleanup refuses symlinks, unknown files, invalid ownership/metadata, traversal paths and active runs. An interrupted/crashed run may remain marked active; it is deliberately excluded from automated deletion and needs manual inspection with the app stopped. Never edit ownership metadata to bypass these safeguards.
+
+Diagnostic operations require a POSIX filesystem, directories/files owned by the current user, and no group/other write permission on the output or diagnostic directories. Canonical ancestors must be owned by the current user or root and not writable by other users; sticky ancestors such as `/tmp` are allowed. Metadata is opened with `O_NOFOLLOW` and checked through the file handle. Cleanup unlinks only recognized files and removes the empty run directory; it never recursively descends into unexpected subdirectories. Listing ignores a vanished run only when `ENOENT` is confirmed for that run itself; malformed metadata, permission failures and symlinks still fail.
+
+This protection assumes trusted same-user processes and no ACL grants that let other accounts mutate the tree. It is not descriptor-relative isolation from a malicious process running as your user, root, or an ACL-authorized writer. Use a private local output directory. If unexpected files appear during deletion, cleanup may stop after removing recognized files; inspect what remains with the app stopped.
 
 The earlier 64-minute failure discarded raw output, so its root cause is unknown. For a short speech-heavy test clip, omit chapters. If a valid transcript cache exists, retry the same MP4 with transcript reuse checked, or use `--skip-transcribe --no-chapters` in the CLI. If transcription itself failed, no valid cache exists: transcribe again, keep any retained diagnostics until the exact error has been investigated, then clean them up using the UI or CLI.
 
