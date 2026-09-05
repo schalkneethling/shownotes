@@ -53,7 +53,7 @@ For this workstation, local binary/model paths and the supplied secret reference
 npm start
 ```
 
-Open **http://127.0.0.1:4317**. This command builds the app and launches the server through Varlock.
+Open **http://127.0.0.1:4317** at the default port. If you configure `PORT`, open `http://127.0.0.1:<PORT>` or the URL printed at startup instead; `localhost` at the same port is also accepted. This command builds the app and launches the server through Varlock.
 
 1. Drop one MP4 onto the upload area, or use the keyboard-accessible file picker.
 2. Leave **Reuse a matching transcript** checked to avoid repeat transcription. Uncheck it to regenerate the transcript.
@@ -104,6 +104,30 @@ The cache validates video content, the binary setting, and the configured model 
 
 Transcripts are saved before requesting Claude, so API failure does not waste completed transcription. A failed run preserves an earlier brief; that earlier file has not been regenerated. Rerunning distillation makes another paid API request. Automatic SDK retries are disabled.
 
+## Transcription failures and diagnostic cleanup
+
+Read failures distinguish missing from unreadable Whisper JSON. Parsing errors distinguish invalid JSON syntax from segment schema and timestamp validation errors; segment indexes are zero-based. Messages never include transcript text. Validation is not relaxed or malformed output repaired automatically.
+
+On these output errors, any raw `whisper.json` and `whisper.txt` emitted by Whisper are retained alongside ownership/lifecycle metadata in a unique `.whisper-diagnostics/run-.../` directory **under that run’s requested output directory**. The error reports its location. Web jobs therefore retain diagnostics under `output/<video-sha256>/.whisper-diagnostics/`. Bulky temporary audio and uploaded MP4 copies are still removed. Successful runs remove their raw diagnostic files after saving the intended transcript cache. Diagnostic directories are ignored by Git and contain private text; do not publish them.
+
+After diagnosing the problem, use **Retained diagnostics → Review diagnostic files** in the UI. It lists file names, byte sizes, and run state without reading transcript text into the browser. Select **Delete this diagnostic run** and confirm the displayed scope. Saved transcript/brief files are preserved. The server rejects cleanup while a recording is processing, and active diagnostic runs are protected.
+
+CLI maintenance requires no key, Varlock authentication, model, or ffmpeg. After building, list retained metadata first:
+
+```sh
+npm run diagnostics -- --out ./output
+```
+
+Delete one listed run deliberately, substituting its exact ID and scope:
+
+```sh
+npm run diagnostics -- --out ./output --delete RUN_ID --scope VIDEO_HASH
+```
+
+For CLI runs directly in the chosen output directory, omit `--scope` (default `.`). The list includes both direct runs and web runs in immediate video-hash subdirectories. `node dist/cli.js diagnostics --help` shows the same command without npm. There is no bulk delete or automatic expiry. Cleanup refuses symlinks, unknown files, invalid ownership/metadata, traversal paths and active runs. An interrupted/crashed run may remain marked active; it is deliberately excluded from automated deletion and needs manual inspection with the app stopped. Never edit ownership metadata to bypass these safeguards.
+
+For the reported 64-minute failure, the earlier version discarded the raw output, so its root cause is unknown. After restarting into this fix, retry with a **5–10 minute, speech-heavy MP4** with enough topic changes for the required minimum five chapters. Do not use `--skip-transcribe`: no valid transcript cache was produced. If it fails again, keep the diagnostic directory until the exact read/parser/validation error has been investigated, then clean it up using the UI or CLI. No real recording was rerun to validate this diagnostic change.
+
 ## Configuration
 
 Put non-secret overrides alongside the reference in `.env.local`:
@@ -117,7 +141,7 @@ Put non-secret overrides alongside the reference in `.env.local`:
 | `PORT`           | `4317`                                                   |
 | `MAX_UPLOAD_MB`  | `4096`                                                   |
 
-The app requests five distinct titles, two distinct descriptions of two or three paragraphs, five to eight topic-shift chapters, and five to ten tags. Claude chooses segment IDs; the application derives chapter times from those boundaries, starts the first chapter at 00:00, and requires ten-second spacing. Recordings too short or sparse for five valid chapters can fail validation. This version targets 30–60 minute developer recordings. Review generated copy before publication; no paid quality evaluation is included in the automated suite.
+The app requests five distinct titles, two distinct descriptions of two or three paragraphs (at most 1200 characters per paragraph), five to eight topic-shift chapters, and five to ten tags. Claude chooses segment IDs; the application derives chapter times from those boundaries, starts the first chapter at 00:00, and requires ten-second spacing. Recordings too short or sparse for five valid chapters can fail validation. The request allows up to 8192 output tokens; truncation and incomplete/malformed responses still fail without an automatic retry. This is headroom, not a guarantee for every language or response. This version targets 30–60 minute developer recordings. Review generated copy before publication; no paid quality evaluation is included in the automated suite.
 
 ## Development and verification
 

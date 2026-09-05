@@ -2,8 +2,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Server } from "node:http";
+import { get, type Server } from "node:http";
 import { createLocalServer } from "../src/server.js";
+import { createDiagnosticRun, finishDiagnosticRun, listDiagnostics } from "../src/diagnostics.js";
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((fn) => fn()));
@@ -119,4 +120,86 @@ it("streams a synthetic MP4, returns progress/result and removes uploaded raw me
   expect(job.brief).toBeDefined();
   expect(s.processVideo).toHaveBeenCalledTimes(1);
   expect((await readdir(s.dir)).some((name) => name.startsWith(".upload-"))).toBe(false);
+});
+
+it("accepts both exact loopback Host/Origin names and rejects suffixes and wrong ports", async () => {
+  const s = await setup();
+  const port = new URL(s.url).port;
+  const getStatus = (headers: Record<string, string>) =>
+    new Promise<number | undefined>((resolve, reject) => {
+      const req = get(s.url, { headers }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode));
+      });
+      req.on("error", reject);
+    });
+  for (const host of [`127.0.0.1:${port}`, `localhost:${port}`])
+    for (const origin of [s.url, `http://localhost:${port}`]) {
+      expect(await getStatus({ host, origin })).toBe(200);
+    }
+  for (const host of [`localhost.evil:${port}`, `127.0.0.1.evil:${port}`, "localhost:1"])
+    expect(await getStatus({ host })).toBe(403);
+  for (const origin of [
+    `http://localhost.evil:${port}`,
+    "http://localhost:1",
+    `https://localhost:${port}`,
+    "null",
+  ])
+    expect(await getStatus({ origin })).toBe(403);
+});
+it("guards diagnostic listing/deletion and protects active runs", async () => {
+  const s = await setup();
+  const run = await createDiagnosticRun(s.dir);
+  const endpoint = `${s.url}/api/diagnostics?scope=.&id=${run.id}`;
+  expect((await fetch(endpoint)).status).toBe(403);
+  expect(
+    (
+      await fetch(endpoint, {
+        method: "DELETE",
+        headers: { "x-session-token": s.token, origin: "https://evil.example" },
+      })
+    ).status,
+  ).toBe(403);
+  const headers = { "x-session-token": s.token };
+  expect((await fetch(endpoint, { method: "DELETE", headers })).status).toBe(400);
+  await finishDiagnosticRun(run, true);
+  const listed = (await (await fetch(`${s.url}/api/diagnostics`, { headers })).json()) as {
+    runs: unknown[];
+  };
+  expect(listed.runs).toHaveLength(1);
+  expect((await fetch(endpoint, { method: "DELETE", headers })).status).toBe(200);
+  expect(await listDiagnostics(s.dir)).toEqual([]);
+});
+it("rejects diagnostic deletion while a recording job is busy", async () => {
+  const s = await setup();
+  const run = await createDiagnosticRun(s.dir);
+  await finishDiagnosticRun(run, true);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = s.processVideo.getMockImplementation()!;
+  s.processVideo.mockImplementationOnce(async (...args) => {
+    await gate;
+    return original(...args);
+  });
+  try {
+    const body = Buffer.from([
+      0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115, 111, 109, 109, 112,
+      52, 50,
+    ]);
+    const headers = { "x-session-token": s.token };
+    await fetch(`${s.url}/api/jobs?name=test.mp4`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "video/mp4" },
+      body,
+    });
+    expect(
+      (await fetch(`${s.url}/api/diagnostics?scope=.&id=${run.id}`, { method: "DELETE", headers }))
+        .status,
+    ).toBe(409);
+  } finally {
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
 });

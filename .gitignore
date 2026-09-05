@@ -172,3 +172,6 @@ work/
 .env.*
 !.env.schema
 !.env.example
+
+# Retained raw Whisper output for failed parsing/validation
+.whisper-diagnostics/

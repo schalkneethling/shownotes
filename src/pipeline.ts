@@ -6,8 +6,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractAudio } from "./audio.js";
 import { defaultClaudeModel, distill, type Brief } from "./distillation.js";
 import { runProcess } from "./process.js";
-import { transcribe, validateSegments, type Segment } from "./transcription.js";
+import {
+  transcribe,
+  validateSegments,
+  TranscriptionOutputError,
+  type Segment,
+} from "./transcription.js";
 import { renderBrief } from "./render.js";
+import { createDiagnosticRun, finishDiagnosticRun, type DiagnosticRun } from "./diagnostics.js";
 export interface PipelineOptions {
   input: string;
   out?: string;
@@ -116,18 +122,31 @@ export async function pipeline(
     await deps.check("ffmpeg", ["-version"]);
     await deps.check(options.binary, ["--help"]);
     const scratch = await mkdtemp(join(out, ".shownotes-"));
+    let diagnostics: DiagnosticRun | undefined;
+    let preserveDiagnostics = false;
     try {
       const audio = join(scratch, "audio.wav");
       progress("Extracting audio");
       await deps.extract(input, audio);
       progress("Transcribing locally");
-      segments = await deps.transcribe({
-        audio,
-        model: resolve(options.model),
-        prefix: join(scratch, "transcript"),
-        binary: options.binary,
-      });
-      segments = validateSegments(segments);
+      diagnostics = await createDiagnosticRun(out);
+      try {
+        segments = await deps.transcribe({
+          audio,
+          model: resolve(options.model),
+          prefix: join(diagnostics.path, "whisper"),
+          binary: options.binary,
+        });
+        segments = validateSegments(segments);
+      } catch (error) {
+        if (error instanceof TranscriptionOutputError) {
+          preserveDiagnostics = true;
+          throw new Error(
+            `${error.message}\nWhisper diagnostic directory: ${diagnostics.path} (raw JSON/TXT retained if emitted).`,
+          );
+        }
+        throw error;
+      }
       await atomicWrite(
         `${prefix}.transcript.json`,
         JSON.stringify(
@@ -138,6 +157,7 @@ export async function pipeline(
       );
     } finally {
       await rm(scratch, { recursive: true, force: true });
+      if (diagnostics) await finishDiagnosticRun(diagnostics, preserveDiagnostics);
     }
   }
   await atomicWrite(`${prefix}.transcript.txt`, segments.map((s) => s.text).join("\n") + "\n");

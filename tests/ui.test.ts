@@ -133,3 +133,54 @@ it("clears a stale dropped file after a multi-file drop and reports upload error
   );
   expect(dom.window.document.querySelector<HTMLButtonElement>("#generate")!.disabled).toBe(false);
 });
+
+it("reviews diagnostic file sizes and requires confirmation before a cleanup request", async () => {
+  const dom = new JSDOM(await readFile("public/index.html", "utf8"));
+  const run = {
+    id: "run-example",
+    scope: ".",
+    state: "retained",
+    createdAt: "2026-09-05T00:00:00.000Z",
+    bytes: 100,
+    files: [{ name: "whisper.json", bytes: 100 }],
+  };
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ runs: [run] })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ deleted: true })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ runs: [] })));
+  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+  initUI(dom.window.document, { copy: async () => {}, fetch: request, confirm });
+  dom.window.document.querySelector<HTMLButtonElement>("#review-diagnostics")!.click();
+  await vi.waitFor(() =>
+    expect(dom.window.document.querySelector("#diagnostic-list")?.textContent).toContain(
+      "whisper.json: 100 bytes",
+    ),
+  );
+  const remove = dom.window.document.querySelector<HTMLButtonElement>("#diagnostic-list button")!;
+  remove.click();
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining("saved transcripts and briefs"));
+  remove.click();
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+  expect(request.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });
+  expect(dom.window.document.querySelector("#diagnostic-status")?.textContent).toContain("Deleted");
+});
+it("does not offer diagnostic deletion for active runs", async () => {
+  const dom = new JSDOM(await readFile("public/index.html", "utf8"));
+  initUI(dom.window.document, {
+    copy: async () => {},
+    fetch: vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          runs: [{ id: "active", scope: ".", state: "active", bytes: 0, files: [] }],
+        }),
+      ),
+    ),
+  });
+  dom.window.document.querySelector<HTMLButtonElement>("#review-diagnostics")!.click();
+  await vi.waitFor(() =>
+    expect(dom.window.document.querySelector("#diagnostic-list")?.textContent).toContain("active"),
+  );
+  expect(dom.window.document.querySelector("#diagnostic-list button")).toBeNull();
+});

@@ -1,8 +1,13 @@
+import type { DiagnosticInfo } from "./diagnostics.js";
 import type { Brief } from "./distillation.js";
 import { chaptersText } from "./render.js";
 export function initUI(
   doc: Document,
-  deps: { copy: (text: string) => Promise<void>; fetch: typeof fetch },
+  deps: {
+    copy: (text: string) => Promise<void>;
+    fetch: typeof fetch;
+    confirm?: (message: string) => boolean;
+  },
 ) {
   function element<T extends HTMLElement>(id: string): T {
     const el = doc.getElementById(id);
@@ -165,6 +170,69 @@ export function initUI(
       element<HTMLInputElement>("reuse").disabled = false;
       element("progress-bar").hidden = true;
     }
+  });
+  const diagnosticStatus = element("diagnostic-status");
+  const reviewDiagnostics = element<HTMLButtonElement>("review-diagnostics");
+  const diagnosticHeaders = () => ({
+    "x-session-token":
+      doc.querySelector<HTMLMetaElement>('meta[name="session-token"]')?.content ?? "",
+  });
+  async function refreshDiagnostics() {
+    reviewDiagnostics.disabled = true;
+    try {
+      const response = await deps.fetch("/api/diagnostics", { headers: diagnosticHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not list diagnostics.");
+      const list = element("diagnostic-list");
+      list.replaceChildren();
+      const runs = data.runs as DiagnosticInfo[];
+      for (const run of runs) {
+        const row = doc.createElement("li");
+        const details = doc.createElement("p");
+        details.textContent = `${run.id} · scope ${run.scope} · ${run.state} · ${run.bytes} bytes\n${run.files.map((file) => `${file.name}: ${file.bytes} bytes`).join(" · ")}`;
+        row.append(details);
+        if (run.state === "retained") {
+          const remove = doc.createElement("button");
+          remove.type = "button";
+          remove.textContent = "Delete this diagnostic run";
+          remove.addEventListener("click", async () => {
+            const message = `Delete diagnostic run ${run.id} in scope ${run.scope} (${run.bytes} bytes)? This removes its raw Whisper JSON/TXT and diagnostic metadata only; saved transcripts and briefs are preserved.`;
+            const confirmed = deps.confirm
+              ? deps.confirm(message)
+              : doc.defaultView?.confirm(message);
+            if (!confirmed) return;
+            remove.disabled = true;
+            try {
+              const result = await deps.fetch(
+                `/api/diagnostics?scope=${encodeURIComponent(run.scope)}&id=${encodeURIComponent(run.id)}`,
+                { method: "DELETE", headers: diagnosticHeaders() },
+              );
+              const body = await result.json();
+              if (!result.ok) throw new Error(body.error ?? "Could not delete diagnostics.");
+              await refreshDiagnostics();
+              diagnosticStatus.textContent = `Deleted diagnostic run ${run.id}.`;
+            } catch (cause) {
+              diagnosticStatus.textContent =
+                cause instanceof Error ? cause.message : "Could not delete diagnostics.";
+              remove.disabled = false;
+            }
+          });
+          row.append(remove);
+        }
+        list.append(row);
+      }
+      diagnosticStatus.textContent = runs.length
+        ? `${runs.length} diagnostic runs. Active runs are protected.`
+        : "No diagnostic runs retained.";
+    } catch (cause) {
+      diagnosticStatus.textContent =
+        cause instanceof Error ? cause.message : "Could not list diagnostics.";
+    } finally {
+      reviewDiagnostics.disabled = false;
+    }
+  }
+  reviewDiagnostics.addEventListener("click", () => {
+    void refreshDiagnostics();
   });
   return { showResult };
 }

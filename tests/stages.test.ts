@@ -145,6 +145,7 @@ describe("distillation through the real SDK with mocked transport", () => {
     const request = fetch.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(String(request[1].body));
     expect(body.output_config.format.type).toBe("json_schema");
+    expect(body.max_tokens).toBe(8192);
     expect(body.messages[0].content).toContain("Topic 7");
     expect(body.messages[0].content).toContain("segmentId");
   });
@@ -201,4 +202,95 @@ it("cancels a running subprocess", async () => {
   );
   controller.abort();
   await expect(result).rejects.toThrow();
+});
+
+describe("transcription output diagnostics", () => {
+  it.each([
+    { code: "ENOENT", expected: "Missing Whisper JSON output file" },
+    { code: "EACCES", expected: "Unreadable Whisper JSON output file" },
+  ])("distinguishes $code without echoing the read error", async ({ code, expected }) => {
+    await expect(
+      transcribe(
+        { audio: "audio", model: "model", prefix: "output", binary: "whisper-cli" },
+        async () => {},
+        async () => {
+          throw Object.assign(new Error("PRIVATE_TRANSCRIPT_TEST"), { code });
+        },
+      ),
+    ).rejects.toThrow(expected);
+  });
+  it.each([
+    { raw: '{"PRIVATE_TRANSCRIPT_TEST":', expected: "Malformed Whisper JSON: invalid JSON syntax" },
+    {
+      raw: "{}",
+      expected: "Invalid Whisper segment schema: transcription must be a nonempty array",
+    },
+    {
+      raw: '{"transcription":[]}',
+      expected: "Invalid Whisper segment schema: transcription must be a nonempty array",
+    },
+    {
+      raw: JSON.stringify({
+        transcription: [
+          { offsets: { from: 0, to: "PRIVATE_TRANSCRIPT_TEST" }, text: "PRIVATE_TRANSCRIPT_TEST" },
+        ],
+      }),
+      expected: "Invalid Whisper segment schema at index 0: offsets.to must be a number",
+    },
+    {
+      raw: JSON.stringify({
+        transcription: [{ offsets: { from: -1, to: 10 }, text: "PRIVATE_TRANSCRIPT_TEST" }],
+      }),
+      expected: "Invalid segment schema at index 0: startMs must be a nonnegative integer",
+    },
+    {
+      raw: JSON.stringify({ transcription: [{ offsets: { from: 0, to: 10 }, text: " " }] }),
+      expected: "Invalid segment schema at index 0: text must be a nonempty string",
+    },
+    {
+      raw: JSON.stringify({
+        transcription: [{ offsets: { from: 20, to: 20 }, text: "PRIVATE_TRANSCRIPT_TEST" }],
+      }),
+      expected: "Invalid segment timestamps at index 0: endMs must be greater than startMs",
+    },
+    {
+      raw: JSON.stringify({
+        transcription: [
+          { offsets: { from: 20, to: 30 }, text: "PRIVATE_TRANSCRIPT_TEST" },
+          { offsets: { from: 10, to: 40 }, text: "PRIVATE_TRANSCRIPT_TEST" },
+        ],
+      }),
+      expected:
+        "Invalid segment timestamps at index 1: startMs must not precede the previous segment startMs",
+    },
+  ])("reports a safe category/index/reason: $expected", async ({ raw, expected }) => {
+    let error: unknown;
+    try {
+      await transcribe(
+        { audio: "a", model: "m", prefix: "o", binary: "whisper-cli" },
+        async () => {},
+        async () => raw,
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(expected);
+    expect((error as Error).message).not.toContain("PRIVATE_TRANSCRIPT_TEST");
+  });
+});
+
+it("rejects truncated JSON at the output budget without retrying", async () => {
+  const { client, fetch } = clientFor('{"titles":', "max_tokens");
+  await expect(distill(segments, client, "test")).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+it("bounds paragraphs so a description plus chapters fits YouTube", async () => {
+  const { client } = clientFor(
+    JSON.stringify({
+      ...brief,
+      descriptions: [["x".repeat(1201), "second"], brief.descriptions[1]],
+    }),
+  );
+  await expect(distill(segments, client, "test")).rejects.toThrow();
 });

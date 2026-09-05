@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "../src/pipeline.js";
+import { transcribe } from "../src/transcription.js";
 import { formatTimestamp, renderBrief } from "../src/render.js";
 const dirs: string[] = [];
 afterEach(async () => {
@@ -43,6 +44,7 @@ describe("pipeline", () => {
     const { dir, input, model, deps } = await setup();
     await pipeline({ input, out: dir, model, binary: "whisper-cli" }, deps);
     await pipeline({ input, out: dir, model, binary: "whisper-cli", skipTranscribe: true }, deps);
+    expect(await readdir(join(dir, ".whisper-diagnostics"))).toEqual([".owner"]);
     expect(deps.extract).toHaveBeenCalledTimes(1);
     expect(deps.distill).toHaveBeenCalledTimes(2);
     expect(await readFile(join(dir, "stream.transcript.txt"), "utf8")).toContain(
@@ -98,5 +100,60 @@ describe("rendering", () => {
     expect(output).toContain("00:00 Intro");
     expect(output).toContain("Alternate opening.");
     expect(output).toContain("Five");
+  });
+});
+
+describe("failed Whisper output retention", () => {
+  it.each([
+    { raw: null, expected: "Missing Whisper JSON output file" },
+    { raw: '{"PRIVATE_TRANSCRIPT_TEST":', expected: "Malformed Whisper JSON" },
+    {
+      raw: JSON.stringify({
+        transcription: [{ offsets: { from: 50, to: 20 }, text: "PRIVATE_TRANSCRIPT_TEST" }],
+      }),
+      expected: "Invalid segment timestamps at index 0",
+    },
+  ])("keeps available raw output and removes audio: $expected", async ({ raw, expected }) => {
+    const s = await setup();
+    const deps = {
+      ...s.deps,
+      extract: async (_input: string, audio: string) => {
+        await writeFile(audio, "synthetic audio");
+      },
+      transcribe: async (options: Parameters<typeof transcribe>[0]) =>
+        transcribe(options, async () => {
+          if (raw !== null) await writeFile(`${options.prefix}.json`, raw);
+          await writeFile(`${options.prefix}.txt`, "PRIVATE_TRANSCRIPT_TEST");
+        }),
+    };
+    const opts = { input: s.input, out: s.dir, model: s.model, binary: "whisper-cli" };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let failure: unknown;
+      try {
+        await pipeline(opts, deps);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      const message = (failure as Error).message;
+      expect(message).toContain(expected);
+      expect(message).toContain(join(s.dir, ".whisper-diagnostics"));
+      expect(message).not.toContain("PRIVATE_TRANSCRIPT_TEST");
+    }
+    const diagnosticRoot = join(s.dir, ".whisper-diagnostics");
+    const runs = (await readdir(diagnosticRoot)).filter((name) => name !== ".owner");
+    expect(runs).toHaveLength(2);
+    for (const run of runs) {
+      const dir = join(diagnosticRoot, run);
+      expect(await readFile(join(dir, "whisper.txt"), "utf8")).toBe("PRIVATE_TRANSCRIPT_TEST");
+      if (raw !== null) expect(await readFile(join(dir, "whisper.json"), "utf8")).toBe(raw);
+      expect((await readdir(dir)).sort()).toEqual(
+        raw === null ? ["run.json", "whisper.txt"] : ["run.json", "whisper.json", "whisper.txt"],
+      );
+    }
+    const files = await readdir(s.dir);
+    expect(files.some((file) => file.startsWith(".shownotes-"))).toBe(false);
+    expect(files).not.toContain("stream.transcript.json");
+    expect(s.deps.distill).not.toHaveBeenCalled();
   });
 });

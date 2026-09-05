@@ -14,7 +14,7 @@ The tool takes one MP4 file as input and produces one output bundle. There are t
 
 **Transcription.** Shell out to a local `whisper.cpp` binary against the extracted WAV, using a `ggml` model already present on disk (do not have the tool download models automatically; treat the model file as a prerequisite the user supplies). Capture both the plain-text transcript and the segment-level timestamps whisper.cpp emits, since the timestamps are what let the distillation stage generate chapter markers later.
 
-**Distillation.** Send the transcript to the Claude API with a single prompt that returns a YouTube title, a two-to-three paragraph description, five to eight timestamped chapter markers built from the segment data, and five to ten tags. Request structured JSON back rather than parsing prose, since the output needs to be reliably split into those four fields.
+**Distillation.** Send the transcript to the Claude API with a single prompt that returns exactly five title candidates, two different two-to-three paragraph descriptions, five to eight timestamped chapter markers built from the segment data, and five to ten tags. Request structured JSON back rather than parsing prose, since the output needs to be reliably split into those four fields.
 
 ## Prerequisites (assume already installed, do not install these)
 
@@ -49,7 +49,7 @@ Node.js and TypeScript, matching the rest of my tooling. Use `child_process` (or
 
 ## Testing
 
-Follow test-driven development: write the test before the implementation for each unit. Use Vitest for all of it, since this is a CLI tool with no browser surface and Playwright would not apply here.
+Follow test-driven development: write the test before the implementation for each unit. Use Vitest for pipeline and HTTP server tests, plus jsdom interaction tests for the local web UI. Cover upload/file selection, candidate selection, clipboard success/failure, progress/errors and confirmed diagnostic cleanup; real-browser acceptance testing is separate from these programmatic tests.
 
 The distillation stage is the most valuable thing to unit test thoroughly, since it is pure logic around prompt construction and response parsing: given a fixed transcript and mocked API response, assert that the JSON gets parsed into the right shape and that malformed or partial responses fail loudly rather than silently producing an empty description. The audio extraction and transcription stages are thin wrappers around subprocesses, so unit tests there should focus on argument construction and error handling (missing binary, non-zero exit code, malformed output) rather than trying to invoke real `ffmpeg` or `whisper.cpp` processes. A small number of integration tests that do invoke the real binaries against a short fixture file are worth having, but gate them behind an environment flag so the default test run does not depend on local binaries being present.
 
@@ -59,8 +59,10 @@ The tool takes a single MP4 path and, with no further intervention, produces a t
 
 ## Out of scope for v1
 
-Speaker diarization, since these are solo streams. Any UI beyond the CLI. Automatic upload to YouTube. Support for input formats other than MP4. Automatic model downloading.
+Speaker diarization, since these are solo streams. Remote hosting or a public-facing UI. Automatic upload to YouTube. Support for input formats other than MP4. Automatic model downloading.
 
-## Open questions for the build session
+## Local web UI and resolved decisions
 
-Whether the chapter markers should be generated purely from whisper.cpp's segment boundaries or whether the distillation prompt should be asked to choose topic-shift points itself, which would need the full segment data in the prompt rather than just the flat transcript. Also worth deciding up front: whether `stream.brief.md` should be Markdown for readability or plain text formatted exactly as YouTube's description field expects, since Markdown syntax would need stripping before pasting either way.
+Alongside the CLI, serve a loopback-only web interface with streamed single-MP4 upload, drag/drop and keyboard file selection, stage progress, exactly five title candidates and two descriptions, explicit radio selection and clipboard feedback. Keep the API key server-side, protect API actions with session and loopback Host/Origin checks, and retain matching transcript cache reuse. Both interfaces share the pipeline and diagnostic lifecycle. Diagnostic cleanup shows file names/sizes, requires deliberate deletion, and preserves active runs and final outputs.
+
+Choose topic-shift chapters aligned to supplied segment IDs. Derive timestamps locally, starting at 00:00. Output readable Markdown with plain-text, copyable YouTube fields; the CLI defaults to candidate 1 and includes alternatives.

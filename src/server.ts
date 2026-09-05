@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, open, readFile, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hashFile, validateMp4 } from "./pipeline.js";
+import { listDiagnostics, deleteDiagnosticRun } from "./diagnostics.js";
 import type { Brief } from "./distillation.js";
 interface Job {
   status: "running" | "complete" | "error";
@@ -45,7 +46,12 @@ export function createLocalServer(options: ServerOptions) {
       const port = address && typeof address !== "string" ? address.port : 0;
       const host = `127.0.0.1:${port}`;
       const origin = `http://${host}`;
-      if (req.headers.host !== host || (req.headers.origin && req.headers.origin !== origin)) {
+      const allowedHosts = new Set([host, `localhost:${port}`]);
+      const allowedOrigins = new Set([origin, `http://localhost:${port}`]);
+      if (
+        !allowedHosts.has(req.headers.host ?? "") ||
+        (req.headers.origin && !allowedOrigins.has(req.headers.origin))
+      ) {
         json(res, 403, { error: "This service only accepts same-origin loopback requests." });
         return;
       }
@@ -72,6 +78,25 @@ export function createLocalServer(options: ServerOptions) {
         }
         if (req.headers["x-session-token"] !== token) {
           json(res, 403, { error: "Reload the page to establish a local session." });
+          return;
+        }
+        if (url.pathname === "/api/diagnostics" && req.method === "GET") {
+          json(res, 200, { runs: await listDiagnostics(options.out) });
+          return;
+        }
+        if (url.pathname === "/api/diagnostics" && req.method === "DELETE") {
+          if (busy) {
+            json(res, 409, {
+              error: "Wait for the active recording job before deleting diagnostics.",
+            });
+            return;
+          }
+          await deleteDiagnosticRun(
+            options.out,
+            url.searchParams.get("scope") ?? ".",
+            url.searchParams.get("id") ?? "",
+          );
+          json(res, 200, { deleted: true });
           return;
         }
         if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {

@@ -29,7 +29,8 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "start": "npm run build && varlock run --skip-cache --inject vars -- node dist/serve.js",
-    "brief": "varlock run --skip-cache --inject vars -- node dist/cli.js"
+    "brief": "varlock run --skip-cache --inject vars -- node dist/cli.js",
+    "diagnostics": "node dist/cli.js diagnostics"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

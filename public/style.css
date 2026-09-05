@@ -315,3 +315,13 @@ footer {
     padding: 22px 12px;
   }
 }
+
+#diagnostics {
+  border-top: 1px solid #cdd3c9;
+  margin-top: 32px;
+  padding-top: 20px;
+}
+
+#diagnostic-list {
+  overflow-wrap: anywhere;
+}
