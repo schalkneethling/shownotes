@@ -24,12 +24,24 @@ cp .env.example .env.local
 Edit `.env.local` with a **reference**, not a plaintext secret:
 
 ```dotenv
+# @initOp(allowAppAuth=true)
+# ---
+
 ANTHROPIC_API_KEY=op(op://YOUR_VAULT/YOUR_ITEM/YOUR_FIELD)
 WHISPER_MODEL=/absolute/path/to/ggml-large-v3-turbo.bin
 WHISPER_BINARY=whisper-cli
 ```
 
 Replace the placeholder with the secret reference copied from your own 1Password field. Keep the 1Password app unlocked and enable its developer CLI integration. Varlock’s official 1Password plugin resolves the reference when you start the application; it may ask you to authorize desktop access. No `op read`, export, or plaintext secret file is needed.
+
+If 1Password reports multiple accounts, choose the account that contains your vault and add its address or account ID as a static argument in the **ignored `.env.local` header**, for example:
+
+```dotenv
+# @initOp(allowAppAuth=true, account=YOUR_ACCOUNT)
+# ---
+```
+
+Keep only one `@initOp` header. The installed plugin requires a static account argument and does not forward `OP_ACCOUNT` to its CLI subprocess. Account selection belongs in local configuration, not the shared schema.
 
 The checked-in `.env.schema` declares the plugin and marks the API key required and sensitive. `.env.local` is ignored by Git. The startup commands disable persistent Varlock caching and inject runtime variables only. The API key is never sent to the browser or to ffmpeg/Whisper subprocesses. Tests use a synthetic override and do not access 1Password.
 
