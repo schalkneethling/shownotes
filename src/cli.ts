@@ -9,11 +9,10 @@ try {
     let options = parseOptions(process.argv.slice(2), process.env);
     if (options.help) console.log(help);
     else {
+      const config = await resolveCLIConfig();
       const controller = new AbortController();
       process.once("SIGINT", () => controller.abort());
       process.once("SIGTERM", () => controller.abort());
-      const config = await resolveCLIConfig();
-      controller.signal.throwIfAborted();
       options = parseOptions(process.argv.slice(2), config.env);
       const result = await pipeline(
         { ...options, onProgress: (stage) => console.error(stage) },

@@ -104,7 +104,9 @@ describe("rendering", () => {
     expect(formatTimestamp(0)).toBe("00:00");
     const output = renderBrief(brief);
     expect(output).toContain("00:00 Intro");
-    expect(output).toContain("Alternate opening.");
+    expect(output).toContain(
+      "## Alternative description\n\nAlternate opening.\n\nAlternate ending.\n\n00:00 Intro\n",
+    );
     expect(output).toContain("Five");
   });
 });
