@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "profile": "modern",
+  "integrations": [
+    "editorconfig",
+    "typescript",
+    "varlock",
+    "oxlint",
+    "oxlint-eslint",
+    "oxlint-typescript",
+    "oxlint-unicorn",
+    "oxlint-oxc",
+    "oxlint-node",
+    "oxlint-promise",
+    "oxlint-vitest",
+    "oxfmt",
+    "stylelint",
+    "stylelint-standard",
+    "stylelint-baseline"
+  ],
+  "files": [".editorconfig", "oxlint.json", "tsconfig.json", ".stylelintrc.json"],
+  "managedFiles": [
+    {
+      "path": ".editorconfig",
+      "hash": "3a15156"
+    },
+    {
+      "path": "oxlint.json",
+      "hash": "e9aa196"
+    },
+    {
+      "path": "tsconfig.json",
+      "hash": "1719dcc"
+    },
+    {
+      "path": ".stylelintrc.json",
+      "hash": "2616d4d"
+    }
+  ],
+  "aiArtifacts": [
+    {
+      "type": "skill",
+      "name": "calavera",
+      "source": "skill-calavera",
+      "path": ".agents/skills/calavera",
+      "hash": "b46ea2f"
+    },
+    {
+      "type": "skill",
+      "name": "code-review",
+      "source": "skill-code-review",
+      "path": ".agents/skills/code-review",
+      "hash": "debe05a"
+    },
+    {
+      "type": "skill",
+      "name": "more-secure-dependabot-config",
+      "source": "skill-more-secure-dependabot-config",
+      "path": ".agents/skills/more-secure-dependabot-config",
+      "hash": "19407f0"
+    },
+    {
+      "type": "skill",
+      "name": "release-with-confidence",
+      "source": "skill-release-with-confidence",
+      "path": ".agents/skills/release-with-confidence",
+      "hash": "8496195"
+    }
+  ]
+}

@@ -141,3 +141,37 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Varlock
+# Varlock recommends committing non-local .env.* files.
+# Review broader existing ignore rules before opting into that convention.
+!.env.schema
+.env.local
+.env.*.local
+
+# Local recordings, generated publishing copy and model weights
+models/
+*.mp4
+*.MP4
+*.wav
+*.aiff
+*.transcript.txt
+*.transcript.json
+*.brief.md
+*.partial
+*.tmp
+.shownotes-*/
+.upload-*/
+output/
+work/
+.calavera/*
+!.calavera/artifacts.lock.json
+!.calavera/state.json
+.varlock/
+.env
+.env.*
+!.env.schema
+!.env.example
+
+# Retained raw Whisper output for failed parsing/validation
+.whisper-diagnostics/

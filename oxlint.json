@@ -1,0 +1,4 @@
+{
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "node", "promise", "vitest"],
+  "rules": {}
+}

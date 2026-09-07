@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "id": "skill-calavera",
+      "type": "skill",
+      "package": "@schalkneethling/calavera-skill-calavera",
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/@schalkneethling/calavera-skill-calavera/-/calavera-skill-calavera-0.2.0.tgz",
+      "integrity": "sha512-h49aoHCwVYyzJvMJrltR0fWaiTFntkTRwTtUYtlQvqbGnrNFo1JCrhIZBzz8hEoMUwd/TSYsy3RLFQxnF5TZ/g==",
+      "tag": "latest",
+      "manifestVersion": 1,
+      "destination": ".agents/skills/calavera",
+      "payloadHash": "705ad59c67950d444dfc21f306e2aa5cfc68cd4c2f47aaca42396354d65a0cd5"
+    },
+    {
+      "id": "skill-code-review",
+      "type": "skill",
+      "package": "@schalkneethling/calavera-skill-code-review",
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/@schalkneethling/calavera-skill-code-review/-/calavera-skill-code-review-0.2.0.tgz",
+      "integrity": "sha512-UnLk4wZ5jeQkDhqQ3PLZAm6yO+jTyOnK+4FKedBfmySl7iBQ8VdJVo+4qNCHCF1l1Uy3gBhC/Hd6DIIpbCF1sg==",
+      "tag": "latest",
+      "manifestVersion": 1,
+      "destination": ".agents/skills/code-review",
+      "payloadHash": "5bcb31e7655f8820b218b69690b6d230e199f4121ccae56d8e855c7827608760"
+    },
+    {
+      "id": "skill-more-secure-dependabot-config",
+      "type": "skill",
+      "package": "@schalkneethling/calavera-skill-more-secure-dependabot-config",
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/@schalkneethling/calavera-skill-more-secure-dependabot-config/-/calavera-skill-more-secure-dependabot-config-0.2.0.tgz",
+      "integrity": "sha512-siR8XJXVuh0VmSeCV9C90AXFz5TVOnv60nuNJ3RkNb8RVdqtwZxX+dL1KWS5+fO5U4uR071yKfxWo+BTLbcMIw==",
+      "tag": "latest",
+      "manifestVersion": 1,
+      "destination": ".agents/skills/more-secure-dependabot-config",
+      "payloadHash": "07faa859c3d2542307c863b0d47ec9e404c042124fa6fa7e30c3c8c32806763b"
+    },
+    {
+      "id": "skill-release-with-confidence",
+      "type": "skill",
+      "package": "@schalkneethling/calavera-skill-release-with-confidence",
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/@schalkneethling/calavera-skill-release-with-confidence/-/calavera-skill-release-with-confidence-0.2.0.tgz",
+      "integrity": "sha512-C4h0JQhmR/FvdumndPm2SRRmt6eqsA87Y74uJjOGrXuuk+O2Se2eVuJAUmFZ77jADWkbG6L9e69TYRaaR7wtag==",
+      "tag": "latest",
+      "manifestVersion": 1,
+      "destination": ".agents/skills/release-with-confidence",
+      "payloadHash": "b22e95797ee49287678e14b4d667fda1aaed87a15f9f189b22768ad3f55e1ff7"
+    }
+  ]
+}
